@@ -1,0 +1,9 @@
+[package]
+name = "cursed"
+version = "0.1.0"
+authors = ["Brett Orr <singular1ty@outlook.com>"]
+
+[dependencies]
+ncurses = "5.86.0"
+rand = "0.3.16"
+
