@@ -3,12 +3,18 @@ extern crate rand;
 
 use ncurses::*;
 use rand::*;
+use rand::distributions::{IndependentSample,Range};
 use std::cmp;
 use ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE;
 
 static MAP_WIDTH: i32 = 80;
 static MAP_HEIGHT: i32 = 22;
 
+static ROOM_MIN_W: i32 = 3;
+static ROOM_MIN_H: i32 = 3;
+static ROOM_MAX_W: i32 = 15;
+static ROOM_MAX_H: i32 = 12;
+static MAX_ROOMS: i32 = 20;
 
 #[derive(Copy, Clone)]
 struct Cell {
@@ -55,7 +61,8 @@ impl Entity {
 
 struct DungeonMap {
     entities: Vec<Entity>,
-    cells: Vec<Vec<Cell>>
+    cells: Vec<Vec<Cell>>,
+    rooms: Vec<Room>
 }
 
 impl DungeonMap {
@@ -115,6 +122,33 @@ impl DungeonMap {
                 };
                 self.cells[w as usize][h as usize] = block;
             }
+        }
+
+        for r in 0..MAX_ROOMS {
+            let randW = rand_int(ROOM_MIN_W, ROOM_MAX_W);
+            let randH = rand_int(ROOM_MIN_H, ROOM_MAX_H);
+
+            let randX = rand_int(1, MAP_WIDTH - randW - 1);
+            let randY = rand_int(1, MAP_HEIGHT - randH - 1);
+
+            let room = Room {
+                x1: randX,
+                y1: randY,
+                x2: randX + randW,
+                y2: randY + randH
+            };
+
+            let mut failed: bool = false;
+            for other in self.rooms.iter_mut() {
+                if room.intersect(other) {
+                    failed = true;
+                }
+            };
+
+            if !failed {
+                self.make_room(randX, randY, randW, randH);
+                self.rooms.push(room);
+            };
         }
 
         self.make_room(5, 5, 3, 4);
@@ -183,11 +217,30 @@ fn player_action(dir: i32, player: &mut Entity, dungeon_map: &mut DungeonMap) {
     }
 }
 
+fn rand_int(low: i32, high: i32) -> i32 {
+    let between = Range::new(low, high);
+    let mut rng = rand::thread_rng();
+    return between.ind_sample(&mut rng);
+}
+
 struct Room {
     x1: i32,
     x2: i32,
     y1: i32,
     y2: i32
+}
+
+impl Room {
+    pub fn center(&self) -> (i32, i32) {
+        let center_x = (self.x1 + self.x2) / 2;
+        let center_y = (self.y1 + self.y2) / 2;
+        return (center_x, center_y);
+    }
+
+    pub fn intersect(&self, other: &Room) -> bool {
+        return (self.x1 <= other.x2 && self.x2 >= other.x1 && 
+                self.y1 <= other.y2 && self.y2 >= other.y2)
+    }
 }
 
 fn main() {
@@ -207,7 +260,8 @@ fn main() {
 
     let mut dungeon_map = DungeonMap {
         entities: Vec::new(),
-        cells: vec![vec![Cell { x:-1, y:-1, passable: false }; (MAP_HEIGHT+1) as usize]; (MAP_WIDTH+1) as usize]
+        cells: vec![vec![Cell { x:-1, y:-1, passable: false }; (MAP_HEIGHT+1) as usize]; (MAP_WIDTH+1) as usize],
+        rooms: Vec::new()
     };
 
     let enemy = Entity {
