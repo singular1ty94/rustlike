@@ -8,13 +8,6 @@ use ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE;
 static MAP_WIDTH: i32 = 80;
 static MAP_HEIGHT: i32 = 22;
 
-#[derive(Copy, Clone)]
-struct Entity {
-    x: i32,
-    y: i32,
-    c: char,
-    cl: i16
-}
 
 #[derive(Copy, Clone)]
 struct Cell {
@@ -24,11 +17,15 @@ struct Cell {
 }
 
 fn is_passable(x: i32, y: i32, map: &mut DungeonMap) -> bool {
-    print_at(0, 26, format!("Checking for {:?}, {:?}", x, y).as_str());
-    let mut iter = map.cells.iter();
-    let cell = iter.find(|c| c.x == x && c.y == y).unwrap();
-    print_at(0, 27, format!("Checking for {:?}", cell.passable).as_str());
-    return cell.passable;
+    return map.cells[x as usize][y as usize].passable;
+}
+
+#[derive(Copy, Clone)]
+struct Entity {
+    x: i32,
+    y: i32,
+    c: char,
+    cl: i16
 }
 
 impl Entity {
@@ -42,6 +39,10 @@ impl Entity {
         }
     }
 
+    pub fn draw_entity(&mut self) {
+        mvaddch(self.y, self.x, self.c as u64);
+    }
+
     pub fn rand_char(&mut self) {
         let mut rstr: String = rand::thread_rng()
         .gen_ascii_chars()
@@ -53,19 +54,76 @@ impl Entity {
 
 struct DungeonMap {
     entities: Vec<Entity>,
-    cells: Vec<Cell>
+    cells: Vec<Vec<Cell>>
 }
 
-fn draw_entity(entity: &Entity) {
-    mvaddch(entity.y, entity.x, entity.c as u64);
+impl DungeonMap {
+    fn map_digger(&mut self, width: i32, height: i32) {
+        for w in 1..width {
+            for h in 1..height {
+                mvaddch(h, w, '.' as u64);
+                let floor = Cell {
+                    x: w,
+                    y: h,
+                    passable: true
+                };
+                self.cells[w as usize][h as usize] = floor;
+            }
+        }
+
+        let room = make_room(5, 5, 3, 4);
+        for x in (room.x1)..room.x2 {
+            for y in (room.y1)..room.y2 {
+                mvaddch(y, x, '_' as u64);
+            }
+        }
+
+        for w in 0..width {
+            mvaddch(0, w, '#' as u64);
+            mvaddch(height, w, '#' as u64);
+
+            let cell_top = Cell {
+                x: w,
+                y: 0,
+                passable: false
+            };
+            self.cells[w as usize][0 as usize] = cell_top;
+
+            let cell_bottom = Cell {
+                x: w,
+                y: height,
+                passable: false
+            };
+            self.cells[w as usize][height as usize] = cell_bottom;
+        }
+
+        for h in 0..height {
+            mvaddch(h, 0, '#' as u64);
+            mvaddch(h, width, '#' as u64);
+
+            let cell_left = Cell {
+                x: 0,
+                y: h,
+                passable: false
+            };
+            self.cells[0 as usize][h as usize] = cell_left;
+
+            let cell_right = Cell {
+                x: width,
+                y: h,
+                passable: false
+            };
+            self.cells[width as usize][h as usize] = cell_left;
+        }
+    }
 }
 
-fn print_rl(colorFore: i16, colorBack: i16, text: &str, pair: i16) {
-    init_pair(pair, colorFore, colorBack);
-    attron(COLOR_PAIR(pair));
-    printw(text);
-    attroff(COLOR_PAIR(pair));
-}
+// fn print_rl(colorFore: i16, colorBack: i16, text: &str, pair: i16) {
+//     init_pair(pair, colorFore, colorBack);
+//     attron(COLOR_PAIR(pair));
+//     printw(text);
+//     attroff(COLOR_PAIR(pair));
+// }
 
 fn print_at(x: i32, y: i32, text: &str) {
     mvprintw(y, x, text);
@@ -81,56 +139,20 @@ fn player_action(dir: i32, player: &mut Entity, dungeon_map: &mut DungeonMap) {
     }
 }
 
-fn map_digger(width: i32, height: i32, map: &mut DungeonMap) {
-    for w in 1..width {
-        for h in 1..height {
-            mvaddch(h, w, '.' as u64);
-            let floor = Cell {
-                x: w,
-                y: h,
-                passable: true
-            };
-            map.cells.push(floor);
-        }
-    }
+struct Room {
+    x1: i32,
+    x2: i32,
+    y1: i32,
+    y2: i32
+}
 
-    for w in 0..width {
-        mvaddch(0, w, '#' as u64);
-        mvaddch(height, w, '#' as u64);
-
-        let cell_top = Cell {
-            x: w,
-            y: 0,
-            passable: false
-        };
-        map.cells.push(cell_top);
-
-        let cell_bottom = Cell {
-            x: w,
-            y: height,
-            passable: false
-        };
-        map.cells.push(cell_bottom);
-    }
-
-    for h in 0..height {
-        mvaddch(h, 0, '#' as u64);
-        mvaddch(h, width, '#' as u64);
-
-        let cell_left = Cell {
-            x: 0,
-            y: h,
-            passable: false
-        };
-        map.cells.push(cell_left);
-
-        let cell_right = Cell {
-            x: width,
-            y: h,
-            passable: false
-        };
-        map.cells.push(cell_right);
-    }
+fn make_room(x: i32, y: i32, w: i32, h: i32) -> Room {
+    return Room {
+        x1: x,
+        x2: x + w,
+        y1: y,
+        y2: y + h
+    };
 }
 
 fn main() {
@@ -150,7 +172,7 @@ fn main() {
 
     let mut dungeon_map = DungeonMap {
         entities: Vec::new(),
-        cells: Vec::new()
+        cells: vec![vec![Cell { x:-1, y:-1, passable: false }; (MAP_HEIGHT+1) as usize]; (MAP_WIDTH+1) as usize]
     };
 
     let enemy = Entity {
@@ -162,25 +184,21 @@ fn main() {
 
     dungeon_map.entities.push(enemy);
 
-    print_rl(COLOR_RED, COLOR_BLACK, "Hello, Rust!\n", 1);
-
     loop {
-        map_digger(MAP_WIDTH, MAP_HEIGHT, &mut dungeon_map);
-        
-        for entity in dungeon_map.entities.iter() {
-            draw_entity(&entity);
-        };
-        draw_entity(&player);    // Player always gets drawn by themselves
-        refresh();
+        dungeon_map.map_digger(MAP_WIDTH, MAP_HEIGHT);
 
         for e in dungeon_map.entities.iter_mut() {
-            e.rand_char()
+            e.rand_char();
+            e.draw_entity();
         };
+        
+        player.draw_entity();    // Player always gets drawn by themselves
+        refresh();
 
         let input: i32 = getch();
         player_action(input, &mut player, &mut dungeon_map);
         clear();
-        draw_entity(&player);
+        player.draw_entity();
         refresh();
     }
 }
