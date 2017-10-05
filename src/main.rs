@@ -24,8 +24,10 @@ struct Cell {
 }
 
 fn is_passable(x: i32, y: i32, map: &mut DungeonMap) -> bool {
+    print_at(0, 26, format!("Checking for {:?}, {:?}", x, y).as_str());
     let mut iter = map.cells.iter();
     let cell = iter.find(|c| c.x == x && c.y == y).unwrap();
+    print_at(0, 27, format!("Checking for {:?}", cell.passable).as_str());
     return cell.passable;
 }
 
@@ -65,6 +67,10 @@ fn print_rl(colorFore: i16, colorBack: i16, text: &str, pair: i16) {
     attroff(COLOR_PAIR(pair));
 }
 
+fn print_at(x: i32, y: i32, text: &str) {
+    mvprintw(y, x, text);
+}
+
 fn player_action(dir: i32, player: &mut Entity, dungeon_map: &mut DungeonMap) {
     match dir {
         115 => player.move_entity(0, 1, dungeon_map),
@@ -76,26 +82,54 @@ fn player_action(dir: i32, player: &mut Entity, dungeon_map: &mut DungeonMap) {
 }
 
 fn map_digger(width: i32, height: i32, map: &mut DungeonMap) {
-    for w in 0..width {
-        for h in 0..height {
+    for w in 1..width {
+        for h in 1..height {
             mvaddch(h, w, '.' as u64);
-            let cell = Cell {
+            let floor = Cell {
                 x: w,
                 y: h,
-                passable: false
+                passable: true
             };
-            map.cells.push(cell);
+            map.cells.push(floor);
         }
     }
 
     for w in 0..width {
         mvaddch(0, w, '#' as u64);
         mvaddch(height, w, '#' as u64);
+
+        let cell_top = Cell {
+            x: w,
+            y: 0,
+            passable: false
+        };
+        map.cells.push(cell_top);
+
+        let cell_bottom = Cell {
+            x: w,
+            y: height,
+            passable: false
+        };
+        map.cells.push(cell_bottom);
     }
 
     for h in 0..height {
         mvaddch(h, 0, '#' as u64);
         mvaddch(h, width, '#' as u64);
+
+        let cell_left = Cell {
+            x: 0,
+            y: h,
+            passable: false
+        };
+        map.cells.push(cell_left);
+
+        let cell_right = Cell {
+            x: width,
+            y: h,
+            passable: false
+        };
+        map.cells.push(cell_right);
     }
 }
 
