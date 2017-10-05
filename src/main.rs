@@ -3,6 +3,7 @@ extern crate rand;
 
 use ncurses::*;
 use rand::*;
+use std::cmp;
 use ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE;
 
 static MAP_WIDTH: i32 = 80;
@@ -58,25 +59,68 @@ struct DungeonMap {
 }
 
 impl DungeonMap {
+    fn make_room(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        let room = Room {
+            x1: x,
+            x2: x + w,
+            y1: y,
+            y2: y + h
+        };
+
+        for x in (room.x1)..room.x2 {
+            for y in (room.y1)..room.y2 {
+                mvaddch(y, x, '.' as u64);
+                let floor = Cell {
+                    x: x,
+                    y: y,
+                    passable: true
+                };
+                self.cells[x as usize][y as usize] = floor;
+            }
+        }
+    }
+
+    fn make_h_tunnel(&mut self, x1: i32, x2: i32, y: i32) {
+        for x in cmp::min(x1, x2)..(cmp::max(x1, x2) + 1) {
+            let cell = Cell {
+                x: x,
+                y: y,
+                passable: true
+            };
+            mvaddch(y, x, '.' as u64);
+            self.cells[x as usize][y as usize] = cell;
+        }
+    }
+
+    fn make_v_tunnel(&mut self, y1: i32, y2: i32, x: i32) {
+        for y in cmp::min(y1, y2)..(cmp::max(y1, y2) + 1) {
+            let cell = Cell {
+                x: x,
+                y: y,
+                passable: true
+            };
+            mvaddch(y, x, '.' as u64);
+            self.cells[x as usize][y as usize] = cell;
+        }
+    }
+
     fn map_digger(&mut self, width: i32, height: i32) {
         for w in 1..width {
             for h in 1..height {
-                mvaddch(h, w, '.' as u64);
-                let floor = Cell {
+                mvaddch(h, w, '#' as u64);
+                let block = Cell {
                     x: w,
                     y: h,
-                    passable: true
+                    passable: false
                 };
-                self.cells[w as usize][h as usize] = floor;
+                self.cells[w as usize][h as usize] = block;
             }
         }
 
-        let room = make_room(5, 5, 3, 4);
-        for x in (room.x1)..room.x2 {
-            for y in (room.y1)..room.y2 {
-                mvaddch(y, x, '_' as u64);
-            }
-        }
+        self.make_room(5, 5, 3, 4);
+        self.make_room(30, 8, 4, 7);
+        self.make_h_tunnel(5, 30, 5);
+        self.make_v_tunnel(5, 8, 30);
 
         for w in 0..width {
             mvaddch(0, w, '#' as u64);
@@ -125,9 +169,9 @@ impl DungeonMap {
 //     attroff(COLOR_PAIR(pair));
 // }
 
-fn print_at(x: i32, y: i32, text: &str) {
-    mvprintw(y, x, text);
-}
+// fn print_at(x: i32, y: i32, text: &str) {
+//     mvprintw(y, x, text);
+// }
 
 fn player_action(dir: i32, player: &mut Entity, dungeon_map: &mut DungeonMap) {
     match dir {
@@ -144,15 +188,6 @@ struct Room {
     x2: i32,
     y1: i32,
     y2: i32
-}
-
-fn make_room(x: i32, y: i32, w: i32, h: i32) -> Room {
-    return Room {
-        x1: x,
-        x2: x + w,
-        y1: y,
-        y2: y + h
-    };
 }
 
 fn main() {
