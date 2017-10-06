@@ -20,7 +20,14 @@ static MAX_ROOMS: i32 = 20;
 struct Cell {
     x: i32,
     y: i32,
+    c: char,
     passable: bool
+}
+
+impl Cell {
+    fn draw(&self) {
+        mvaddch(self.y, self.x, self.c as u64);
+    }
 }
 
 fn is_passable(x: i32, y: i32, map: &mut DungeonMap) -> bool {
@@ -76,10 +83,10 @@ impl DungeonMap {
 
         for x in (room.x1)..room.x2 {
             for y in (room.y1)..room.y2 {
-                mvaddch(y, x, '.' as u64);
                 let floor = Cell {
                     x: x,
                     y: y,
+                    c: '.',
                     passable: true
                 };
                 self.cells[x as usize][y as usize] = floor;
@@ -92,9 +99,9 @@ impl DungeonMap {
             let cell = Cell {
                 x: x,
                 y: y,
+                c: '.',
                 passable: true
             };
-            mvaddch(y, x, '.' as u64);
             self.cells[x as usize][y as usize] = cell;
         }
     }
@@ -104,9 +111,9 @@ impl DungeonMap {
             let cell = Cell {
                 x: x,
                 y: y,
+                c: '.',
                 passable: true
             };
-            mvaddch(y, x, '.' as u64);
             self.cells[x as usize][y as usize] = cell;
         }
     }
@@ -114,15 +121,17 @@ impl DungeonMap {
     fn map_digger(&mut self, width: i32, height: i32) {
         for w in 1..width {
             for h in 1..height {
-                mvaddch(h, w, '#' as u64);
                 let block = Cell {
                     x: w,
                     y: h,
+                    c: '#',
                     passable: false
                 };
                 self.cells[w as usize][h as usize] = block;
             }
         }
+
+        let mut num_rooms: i32 = 0;
 
         for r in 0..MAX_ROOMS {
             let randW = rand_int(ROOM_MIN_W, ROOM_MAX_W);
@@ -142,27 +151,39 @@ impl DungeonMap {
             for other in self.rooms.iter_mut() {
                 if room.intersect(other) {
                     failed = true;
+                    break;
                 }
             };
 
             if !failed {
                 self.make_room(randX, randY, randW, randH);
                 self.rooms.push(room);
-            };
+                num_rooms = num_rooms + 1;
+            } else {
+                // Get the previous room 
+                let (prev_x, prev_y) = self.rooms[(num_rooms - 1) as usize].center();
+                let (new_x, new_y) = room.center();
+
+                let coin = rand_int(0, 1);
+                match coin {
+                    0 => {
+                        self.make_h_tunnel(prev_x, new_x, prev_y);
+                        self.make_v_tunnel(prev_y, new_y, prev_x);
+                    }
+                    1 => {
+                        self.make_v_tunnel(prev_y, new_y, prev_x);
+                        self.make_h_tunnel(prev_x, new_x, prev_y);
+                    },
+                    _ => ()
+                }
+            }
         }
 
-        self.make_room(5, 5, 3, 4);
-        self.make_room(30, 8, 4, 7);
-        self.make_h_tunnel(5, 30, 5);
-        self.make_v_tunnel(5, 8, 30);
-
         for w in 0..width {
-            mvaddch(0, w, '#' as u64);
-            mvaddch(height, w, '#' as u64);
-
             let cell_top = Cell {
                 x: w,
                 y: 0,
+                c: '#',
                 passable: false
             };
             self.cells[w as usize][0 as usize] = cell_top;
@@ -170,18 +191,17 @@ impl DungeonMap {
             let cell_bottom = Cell {
                 x: w,
                 y: height,
+                c: '#',
                 passable: false
             };
             self.cells[w as usize][height as usize] = cell_bottom;
         }
 
         for h in 0..height {
-            mvaddch(h, 0, '#' as u64);
-            mvaddch(h, width, '#' as u64);
-
             let cell_left = Cell {
                 x: 0,
                 y: h,
+                c: '#',
                 passable: false
             };
             self.cells[0 as usize][h as usize] = cell_left;
@@ -189,9 +209,10 @@ impl DungeonMap {
             let cell_right = Cell {
                 x: width,
                 y: h,
+                c: '#',
                 passable: false
             };
-            self.cells[width as usize][h as usize] = cell_left;
+            self.cells[width as usize][h as usize] = cell_right;
         }
     }
 }
@@ -238,8 +259,8 @@ impl Room {
     }
 
     pub fn intersect(&self, other: &Room) -> bool {
-        return (self.x1 <= other.x2 && self.x2 >= other.x1 && 
-                self.y1 <= other.y2 && self.y2 >= other.y2)
+        return self.x1 <= other.x2 && self.x2 >= other.x1 && 
+                self.y1 <= other.y2 && self.y2 >= other.y2
     }
 }
 
@@ -260,7 +281,7 @@ fn main() {
 
     let mut dungeon_map = DungeonMap {
         entities: Vec::new(),
-        cells: vec![vec![Cell { x:-1, y:-1, passable: false }; (MAP_HEIGHT+1) as usize]; (MAP_WIDTH+1) as usize],
+        cells: vec![vec![Cell { x:-1, y:-1, c: '!', passable: false }; (MAP_HEIGHT+1) as usize]; (MAP_WIDTH+1) as usize],
         rooms: Vec::new()
     };
 
@@ -272,9 +293,14 @@ fn main() {
     };
 
     dungeon_map.entities.push(enemy);
+    dungeon_map.map_digger(MAP_WIDTH, MAP_HEIGHT);
 
     loop {
-        dungeon_map.map_digger(MAP_WIDTH, MAP_HEIGHT);
+        for c in dungeon_map.cells.iter() {
+            for cell in c.iter() {
+                cell.draw();
+            }
+        }
 
         for e in dungeon_map.entities.iter_mut() {
             e.rand_char();
