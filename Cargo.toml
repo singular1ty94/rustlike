@@ -6,4 +6,5 @@ authors = ["Brett Orr <singular1ty@outlook.com>"]
 [dependencies]
 ncurses = "5.86.0"
 rand = "0.3.16"
+float-cmp = "0.2.5"
 

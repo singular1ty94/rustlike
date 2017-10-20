@@ -1,19 +1,23 @@
 extern crate ncurses;
 extern crate rand;
+extern crate float_cmp;
 
 use ncurses::*;
 use rand::*;
 use rand::distributions::{IndependentSample,Range};
 use std::cmp;
 use ncurses::CURSOR_VISIBILITY::CURSOR_INVISIBLE;
+use float_cmp::*;
 
 static MAP_WIDTH: i32 = 80;
 static MAP_HEIGHT: i32 = 22;
 
-static ROOM_MIN_W: i32 = 3;
+static ROOM_MIN_W: i32 = 4;
 static ROOM_MIN_H: i32 = 3;
-static ROOM_MAX_W: i32 = 15;
-static ROOM_MAX_H: i32 = 12;
+
+static ROOM_MAX_W: i32 = 8;
+static ROOM_MAX_H: i32 = 10;
+
 static MAX_ROOMS: i32 = 20;
 
 #[derive(Copy, Clone)]
@@ -66,10 +70,21 @@ impl Entity {
     }
 }
 
+fn distance_between_points(x1: i32, y1: i32, x2: i32, y2: i32) -> f32{
+    return ((x2 as f64 - x1 as f64).powi(2) + (y2 as f64 - y1 as f64).powi(2)).sqrt() as f32;
+}
+
 struct DungeonMap {
     entities: Vec<Entity>,
     cells: Vec<Vec<Cell>>,
     rooms: Vec<Room>
+}
+
+#[derive(Copy, Clone)]
+struct RoomDistance {
+    distance: f32,
+    roomOne: Room,
+    roomTwo: Room
 }
 
 impl DungeonMap {
@@ -133,7 +148,7 @@ impl DungeonMap {
 
         let mut num_rooms: i32 = 0;
 
-        for r in 0..MAX_ROOMS {
+        while num_rooms < MAX_ROOMS {
             let randW = rand_int(ROOM_MIN_W, ROOM_MAX_W);
             let randH = rand_int(ROOM_MIN_H, ROOM_MAX_H);
 
@@ -159,24 +174,53 @@ impl DungeonMap {
                 self.make_room(randX, randY, randW, randH);
                 self.rooms.push(room);
                 num_rooms = num_rooms + 1;
-            } else {
-                // Get the previous room 
-                let (prev_x, prev_y) = self.rooms[(num_rooms - 1) as usize].center();
-                let (new_x, new_y) = room.center();
+            }
+        }
 
-                let coin = rand_int(0, 1);
-                match coin {
-                    0 => {
-                        self.make_h_tunnel(prev_x, new_x, prev_y);
-                        self.make_v_tunnel(prev_y, new_y, prev_x);
+        let mut dist_between_rooms: Vec<RoomDistance> = Vec::new();
+
+        for room in self.rooms.iter() {
+            for other in self.rooms.iter() {
+
+                let copy = dist_between_rooms.clone();
+                for rd in copy.iter() {
+                    let room_match = (rd.roomOne.eq(room) && rd.roomTwo.eq(other)) || (rd.roomOne.eq(other) && rd.roomTwo.eq(room));
+
+                    println!("Room match status: {} for comparing {}-{}-{}-{} and {}-{}-{}-{}", room_match, room.x1, room.y1, room.x2, room.y2, other.x1, other.x2, other.y1, other.y2);
+
+                    if !room_match {
+                        let (rX, rY) = room.center();
+                        let (oX, oY) = other.center();
+
+                        println!("Getting centers.");
+
+                        let dist = RoomDistance {
+                            roomOne: room.clone(),
+                            roomTwo: other.clone(),
+                            distance: distance_between_points(rX, rY, oX, oY)
+                        };
+                        dist_between_rooms.push(dist);
                     }
-                    1 => {
-                        self.make_v_tunnel(prev_y, new_y, prev_x);
-                        self.make_h_tunnel(prev_x, new_x, prev_y);
-                    },
-                    _ => ()
                 }
             }
+        }
+
+        println!("Dist_Between Length: {}", dist_between_rooms.len());
+        println!("Rooms: {}", self.rooms.len());
+
+        dist_between_rooms.sort_by(|roomDist1, roomDist2| { 
+            let a: f32 = roomDist1.distance;
+            let b: f32 = roomDist2.distance;
+            return a.approx_cmp(&b, 2); 
+        });
+
+        for room_dist in dist_between_rooms.iter() {
+            let (rX, rY) = room_dist.roomOne.center();
+            let (oX, oY) = room_dist.roomTwo.center();
+
+            self.make_h_tunnel(rX, oX, rY);
+            self.make_v_tunnel(rY, oY, rX);
+
         }
 
         for w in 0..width {
@@ -224,9 +268,9 @@ impl DungeonMap {
 //     attroff(COLOR_PAIR(pair));
 // }
 
-// fn print_at(x: i32, y: i32, text: &str) {
-//     mvprintw(y, x, text);
-// }
+fn print_at(x: i32, y: i32, text: &str) {
+    mvprintw(y, x, text);
+}
 
 fn player_action(dir: i32, player: &mut Entity, dungeon_map: &mut DungeonMap) {
     match dir {
@@ -244,11 +288,20 @@ fn rand_int(low: i32, high: i32) -> i32 {
     return between.ind_sample(&mut rng);
 }
 
+
+#[derive(Copy, Clone)]
 struct Room {
     x1: i32,
     x2: i32,
     y1: i32,
     y2: i32
+}
+
+impl PartialEq for Room {
+    fn eq(&self, other: &Room) -> bool {
+        println!("Checking {}-{}-{}-{} and {}-{}-{}-{}", self.x1, self.y1, self.x2, self.y2, other.x1, other.x2, other.y1, other.y2);
+        self.x1 == other.x1 && self.y1 == other.y1 && self.x2 == other.x2 && self.y2 == other.y2
+    }
 }
 
 impl Room {
@@ -260,17 +313,17 @@ impl Room {
 
     pub fn intersect(&self, other: &Room) -> bool {
         return self.x1 <= other.x2 && self.x2 >= other.x1 && 
-                self.y1 <= other.y2 && self.y2 >= other.y2
+                self.y1 <= other.y2 && self.y2 >= other.y1
     }
 }
 
 fn main() {
-    initscr();
-    start_color();
-    noecho();
-    cbreak();
+    // initscr();
+    // start_color();
+    // noecho();
+    // cbreak();
 
-    curs_set(CURSOR_INVISIBLE);
+    // curs_set(CURSOR_INVISIBLE);
 
     let mut player = Entity {
         x: 5,
@@ -295,25 +348,25 @@ fn main() {
     dungeon_map.entities.push(enemy);
     dungeon_map.map_digger(MAP_WIDTH, MAP_HEIGHT);
 
-    loop {
-        for c in dungeon_map.cells.iter() {
-            for cell in c.iter() {
-                cell.draw();
-            }
-        }
+    // loop {
+    //     for c in dungeon_map.cells.iter() {
+    //         for cell in c.iter() {
+    //             cell.draw();
+    //         }
+    //     }
 
-        for e in dungeon_map.entities.iter_mut() {
-            e.rand_char();
-            e.draw_entity();
-        };
+    //     for e in dungeon_map.entities.iter_mut() {
+    //         e.rand_char();
+    //         e.draw_entity();
+    //     };
         
-        player.draw_entity();    // Player always gets drawn by themselves
-        refresh();
+    //     player.draw_entity();    // Player always gets drawn by themselves
+    //     refresh();
 
-        let input: i32 = getch();
-        player_action(input, &mut player, &mut dungeon_map);
-        clear();
-        player.draw_entity();
-        refresh();
-    }
+    //     let input: i32 = getch();
+    //     player_action(input, &mut player, &mut dungeon_map);
+    //     clear();
+    //     player.draw_entity();
+    //     refresh();
+    // }
 }
